@@ -10,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 public class ResourceMonitor {
 
     private final MeterRegistry meterRegistry;
+    public static double latestCpu = 0.0;
 
     public ResourceMonitor(MeterRegistry meterRegistry) {
         this.meterRegistry = meterRegistry;
@@ -21,6 +22,7 @@ public class ResourceMonitor {
         try {
             // 1. Fetch CPU Usage (returns 0.0 to 1.0, so we multiply by 100 for %)
             double cpu = meterRegistry.get("system.cpu.usage").gauge().value() * 100;
+            latestCpu = cpu; // Save the measured CPU to the static variable
 
             // 2. Fetch JVM Memory usage in Megabytes (MB)
             double memory = meterRegistry.get("jvm.memory.used").gauge().value() / (1024 * 1024);
