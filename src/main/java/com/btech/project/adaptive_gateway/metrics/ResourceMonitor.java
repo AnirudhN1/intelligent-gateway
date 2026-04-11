@@ -27,7 +27,7 @@ public class ResourceMonitor {
             // 2. Fetch JVM Memory usage in Megabytes (MB)
             double memory = meterRegistry.get("jvm.memory.used").gauge().value() / (1024 * 1024);
 
-            // 3. Print it to your IntelliJ Console
+            // 3. Print it to IntelliJ Console
             log.info("HEALTH CHECK >> CPU Usage: {}% | JVM Memory: {} MB",
                     String.format("%.2f", cpu),
                     String.format("%.2f", memory));
