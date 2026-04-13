@@ -31,22 +31,27 @@ public class MetricsController {
         org.springframework.web.reactive.function.client.WebClient webClient =
                 org.springframework.web.reactive.function.client.WebClient.create();
 
-        log.info("SENTRYGATE // INTERNAL_ATTACK_SEQUENCE_START");
+        log.info("SENTRYGATE // INTERNAL_ATTACK_SEQUENCE_START (SUSTAINED)");
 
-        for (int i = 0; i < 500; i++) {
-            webClient.get()
-                    .uri("http://localhost:8080/stress/test")
-                    .retrieve()
-                    .onStatus(status -> status.value() == 429, response -> {
-                        // We handle the 429 quietly instead of throwing an error
-                        return reactor.core.publisher.Mono.empty();
-                    })
-                    .toBodilessEntity()
-                    .subscribe(
-                            success -> log.debug("Request Allowed"),
-                            error -> {} // This silences the "Operator called default onErrorDropped"
-                    );
-        }
-        return "Attack simulation running...";
+        // Fire 1 request every 50ms for 15 seconds (Total ~300 requests)
+        reactor.core.publisher.Flux.interval(java.time.Duration.ofMillis(50))
+                .take(300)
+                .flatMap(i -> webClient.get()
+                        .uri("http://localhost:8080/stress/test")
+                        .retrieve()
+                        .onStatus(status -> status.value() == 429, response -> {
+                            return reactor.core.publisher.Mono.empty(); // Swallow the 429s quietly
+                        })
+                        .toBodilessEntity()
+                        .onErrorResume(e -> reactor.core.publisher.Mono.empty()) // Handle closed connections safely
+                )
+                .subscribe(
+                        success -> {},
+                        error -> log.error("Attack sequence error: " + error.getMessage()),
+                        () -> log.info("SENTRYGATE // ATTACK_SEQUENCE_COMPLETE")
+                );
+
+        return "Sustained attack simulation running... watch the dashboard.";
     }
+
 }
