@@ -1,7 +1,7 @@
 package com.btech.project.adaptive_gateway.filter;
 
-import com.btech.project.adaptive_gateway.logic.FuzzyController; // NEW
-import com.btech.project.adaptive_gateway.metrics.ResourceMonitor; // NEW
+import com.btech.project.adaptive_gateway.logic.FuzzyController;
+import com.btech.project.adaptive_gateway.metrics.ResourceMonitor;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
@@ -19,9 +19,8 @@ import java.time.Duration;
 public class AdaptiveLoadShedderFilter implements GlobalFilter, Ordered {
 
     private final ReactiveStringRedisTemplate redisTemplate;
-    private final FuzzyController fuzzyController; // 1. Define the Brain
+    private final FuzzyController fuzzyController;
 
-    // 2. Inject both Redis and the Fuzzy Controller here
     public AdaptiveLoadShedderFilter(ReactiveStringRedisTemplate redisTemplate, FuzzyController fuzzyController) {
         this.redisTemplate = redisTemplate;
         this.fuzzyController = fuzzyController;
@@ -29,28 +28,41 @@ public class AdaptiveLoadShedderFilter implements GlobalFilter, Ordered {
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
-        String key = "request_count";
+        String path = exchange.getRequest().getURI().getPath();
 
-        // 3. Get the dynamic limit based on current CPU
-        int dynamicLimit = fuzzyController.calculateDynamicLimit(ResourceMonitor.latestCpu);
+        // 1. Identify Criticality ("Flash Sale" Logic)
+        boolean isCritical = path.contains("/payment") || path.contains("/checkout");
 
-        return redisTemplate.opsForValue().increment(key)
+        // 2. Separate the Redis state so standard traffic doesn't steal the payment quota
+        String redisKey = isCritical ? "quota_critical" : "quota_standard";
+
+        // 3. Calculate dynamic limit from the Fuzzy Engine
+        int baseLimit = fuzzyController.calculateDynamicLimit(ResourceMonitor.latestCpu);
+
+        // 4. Critical routes get 5x the allowance of standard routes during a crisis
+        int effectiveLimit = isCritical ? (baseLimit * 5) : baseLimit;
+
+        return redisTemplate.opsForValue().increment(redisKey)
                 .flatMap(count -> {
                     if (count == 1) {
-                        return redisTemplate.expire(key, Duration.ofSeconds(10)).thenReturn(count);
+                        return redisTemplate.expire(redisKey, Duration.ofSeconds(10)).thenReturn(count);
                     }
                     return Mono.just(count);
                 })
                 .flatMap(count -> {
-                    // 4. Check against the Dynamic Limit instead of a static number
-                    if (count > dynamicLimit) {
-                        log.warn("ADAPTIVE SHEDDING >> Limit reached ({}). Current CPU: {}%. Rejecting.",
-                                dynamicLimit, String.format("%.2f", ResourceMonitor.latestCpu));
+                    if (count > effectiveLimit) {
+                        log.warn("SHEDDING >> Route: {} | Priority: {} | CPU: {}% | Rejecting request.",
+                                path, isCritical ? "HIGH" : "LOW", String.format("%.2f", ResourceMonitor.latestCpu));
                         exchange.getResponse().setStatusCode(HttpStatus.TOO_MANY_REQUESTS);
                         return exchange.getResponse().setComplete();
                     }
 
-                    log.info("GATEKEEPER >> Allowed. Count: {}/{}", count, dynamicLimit);
+                    // Prevent dashboard polling from spamming the console logs
+                    if (!path.contains("/api/stats")) {
+                        log.info("GATEKEEPER >> Allowed Route: {} | Priority: {} | Count: {}/{}",
+                                path, isCritical ? "HIGH" : "LOW", count, effectiveLimit);
+                    }
+
                     return chain.filter(exchange);
                 });
     }
