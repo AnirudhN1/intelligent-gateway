@@ -35,9 +35,16 @@
     </div>
     <div class="chart-wrapper"><canvas id="metricsChart"></canvas></div>
 </div>
-<div class="status-container">
-    <div class="status-badge">● LIVE SYSTEM TELEMETRY</div>
-    <button onclick="triggerStress()" style="margin-left:20px; padding:6px 15px; background:var(--accent-red); color:white; border:none; border-radius:4px; cursor:pointer; font-family:'JetBrains Mono'; font-weight:bold;">
+<div class="status-container" style="display: flex; align-items: center; justify-content: center; margin-top: 20px; gap: 20px;">
+    <div class="status-badge" id="mode-badge" style="padding: 6px 12px; background: #30363d; border-radius: 4px; font-family: 'JetBrains Mono'; font-size: 0.8rem;">
+        ● MODE: REACTIVE
+    </div>
+
+    <button onclick="toggleMode()" id="mode-btn" style="padding:6px 15px; background:var(--accent-blue); color:white; border:none; border-radius:4px; cursor:pointer; font-family:'JetBrains Mono'; font-weight:bold;">
+        SWITCH TO PROACTIVE ML
+    </button>
+
+    <button onclick="triggerStress()" id="stress-btn" style="padding:6px 15px; background:var(--accent-red); color:white; border:none; border-radius:4px; cursor:pointer; font-family:'JetBrains Mono'; font-weight:bold;">
         LAUNCH_STRESS_TEST
     </button>
 </div>
@@ -87,6 +94,31 @@
         } catch (e) { console.error(e); }
     }
     setInterval(updateData, 2000);
+
+    let currentMode = "REACTIVE";
+
+    async function toggleMode() {
+        currentMode = currentMode === "REACTIVE" ? "PROACTIVE" : "REACTIVE";
+
+        // Call the backend to flip the switch
+        await fetch(`/api/mode?mode=${currentMode}`, { method: 'POST' });
+
+        const btn = document.getElementById('mode-btn');
+        const badge = document.getElementById('mode-badge');
+
+        if (currentMode === "PROACTIVE") {
+            btn.innerText = "SWITCH TO REACTIVE";
+            btn.style.background = "#8957e5"; // Purple for AI mode
+            badge.innerText = "● MODE: PROACTIVE (LSTM)";
+            badge.style.color = "#a371f7";
+        } else {
+            btn.innerText = "SWITCH TO PROACTIVE ML";
+            btn.style.background = "var(--accent-blue)";
+            badge.innerText = "● MODE: REACTIVE";
+            badge.style.color = "var(--text)";
+        }
+    }
+
     async function triggerStress() {
     const btn = event.target;
     btn.innerText = "ATTACKING...";
@@ -97,6 +129,7 @@
         btn.style.opacity = "1";
     }, 5000);
     }
+
 </script>
 </body>
 </html>
