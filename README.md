@@ -138,19 +138,19 @@ SentryGate follows a "Collect-Train-Deploy" lifecycle to ensure the AI is calibr
 5. **Access the Dashboard:**
    Open your browser and navigate to: `http://localhost:8080/index.html`
 
+> **⚠️ Demonstration Environment:** Out of the box, SentryGate is configured to run as a self-contained demonstration. The routing logic is intentionally pointed to mock API endpoints (e.g., `httpbin.org`) and utilizes internal short-circuits to safely simulate heavy concurrent load without requiring external downstream microservices. To protect your own infrastructure, simply update the target URIs in the routing configuration.
+
 ---
 
 ## 📊 Fuzzy Logic Math
 
 The system calculates the dynamic limit (L) using the Weighted Average of Center of Sums:
 
-```text
-L = Σ(μ_i * C_i) / Σ(μ_i)
-```
+$$L = \frac{\sum (\mu_{i} \cdot C_{i})}{\sum \mu_{i}}$$
 
 Where:
-* `μ_i` is the degree of membership in a stress set (Calculated via Trapezoidal/Triangular overlap functions).
-* `C_i` is the crisp singleton output value representing the limit for that state (e.g., 5, 20, or 50 requests/sec).
+* $\mu_{i}$ is the degree of membership in a stress set (Calculated via Trapezoidal/Triangular overlap functions).
+* $C_{i}$ is the crisp singleton output value representing the limit for that state (e.g., 5, 20, or 50 requests/sec).
 
 ---
 
