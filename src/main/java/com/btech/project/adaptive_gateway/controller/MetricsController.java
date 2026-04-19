@@ -1,5 +1,6 @@
 package com.btech.project.adaptive_gateway.controller;
 
+import com.btech.project.adaptive_gateway.logic.LSTMPredictor;
 import com.btech.project.adaptive_gateway.metrics.ResourceMonitor;
 import com.btech.project.adaptive_gateway.logic.FuzzyController;
 import lombok.extern.slf4j.Slf4j;
@@ -24,10 +25,25 @@ public class MetricsController {
     @GetMapping("/api/stats")
     public Map<String, Object> getStats() {
         double cpu = ResourceMonitor.latestCpu;
+        int currentLimit;
+
+        // Ensure the dashboard limit matches the actual active brain
+        if ("PROACTIVE".equals(ACTIVE_MODE)) {
+            double[] window = ResourceMonitor.cpuHistory.stream().mapToDouble(Double::doubleValue).toArray();
+            // If we don't have 5 readings yet, fallback to reactive math
+            currentLimit = window.length == 5 ?
+                    fuzzyController.calculateDynamicLimit(LSTMPredictor.latestPrediction) :
+                    fuzzyController.calculateDynamicLimit(cpu);
+        } else {
+            currentLimit = fuzzyController.calculateDynamicLimit(cpu);
+            LSTMPredictor.latestPrediction = cpu; // Sync them in reactive mode
+        }
+
         return Map.of(
                 "cpu", cpu,
-                "limit", fuzzyController.calculateDynamicLimit(cpu),
-                "mode", ACTIVE_MODE // Send current mode to the UI
+                "limit", currentLimit,
+                "prediction", LSTMPredictor.latestPrediction, // Send the AI forecast!
+                "mode", ACTIVE_MODE
         );
     }
 
@@ -46,22 +62,25 @@ public class MetricsController {
         org.springframework.web.reactive.function.client.WebClient webClient =
                 org.springframework.web.reactive.function.client.WebClient.create();
 
-        log.info("SENTRYGATE // INTERNAL_ATTACK_SEQUENCE_START (SUSTAINED)");
+        log.info("SENTRYGATE // INTERNAL_ATTACK_SEQUENCE_START (SUSTAINED & HEAVY)");
 
-        reactor.core.publisher.Flux.interval(java.time.Duration.ofMillis(50))
-                .take(300)
+        reactor.core.publisher.Flux.interval(java.time.Duration.ofMillis(10))
+                .onBackpressureDrop() // <--- BACKPRESSURE SHIELD: Drop requests if the client is choking
+                .take(1000)
+                // INCREASED CONCURRENCY: Allow up to 1000 simultaneous network calls
                 .flatMap(i -> webClient.get()
-                        .uri("http://localhost:8080/stress/test")
-                        .retrieve()
-                        .onStatus(status -> status.value() == 429, response -> reactor.core.publisher.Mono.empty())
-                        .toBodilessEntity()
-                        .onErrorResume(e -> reactor.core.publisher.Mono.empty())
+                                .uri("http://localhost:8080/stress/test")
+                                .retrieve()
+                                .onStatus(status -> status.value() == 429, response -> reactor.core.publisher.Mono.empty())
+                                .toBodilessEntity()
+                                .onErrorResume(e -> reactor.core.publisher.Mono.empty()),
+                        1000
                 )
                 .subscribe(
                         success -> {},
                         error -> log.error("Attack sequence error: " + error.getMessage()),
                         () -> log.info("SENTRYGATE // ATTACK_SEQUENCE_COMPLETE")
                 );
-        return "Sustained attack simulation running... watch the dashboard.";
+        return "Sustained heavy attack simulation running... watch the dashboard.";
     }
 }

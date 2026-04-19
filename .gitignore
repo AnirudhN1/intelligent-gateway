@@ -31,3 +31,8 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# SentryGate AI Artifacts (DO NOT COMMIT)
+telemetry.csv
+sentrygate_lstm.zip
+*.log

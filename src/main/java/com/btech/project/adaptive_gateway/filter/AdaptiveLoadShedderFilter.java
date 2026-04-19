@@ -40,7 +40,16 @@ public class AdaptiveLoadShedderFilter implements GlobalFilter, Ordered {
         // THE SWITCH: Ask the active brain for the limit
         int baseLimit;
         if ("PROACTIVE".equals(MetricsController.ACTIVE_MODE)) {
-            baseLimit = lstmPredictor.predictDynamicLimit(ResourceMonitor.latestCpu);
+            // NEW: Pass the array to the AI
+            double[] windowArray = ResourceMonitor.cpuHistory.stream().mapToDouble(Double::doubleValue).toArray();
+
+            // Safety check: If the server just booted and doesn't have 5 readings yet, fallback to Reactive
+            if (windowArray.length == 5) {
+                baseLimit = lstmPredictor.predictDynamicLimit(windowArray);
+            } else {
+                log.info("AI STATUS >> Warming up sliding window... currently {}/5", windowArray.length);
+                baseLimit = fuzzyController.calculateDynamicLimit(ResourceMonitor.latestCpu);
+            }
         } else {
             baseLimit = fuzzyController.calculateDynamicLimit(ResourceMonitor.latestCpu);
         }

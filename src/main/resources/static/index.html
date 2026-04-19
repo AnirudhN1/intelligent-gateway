@@ -47,6 +47,9 @@
     <button onclick="triggerStress()" id="stress-btn" style="padding:6px 15px; background:var(--accent-red); color:white; border:none; border-radius:4px; cursor:pointer; font-family:'JetBrains Mono'; font-weight:bold;">
         LAUNCH_STRESS_TEST
     </button>
+    <div id="attack-progress-container" style="display: none; width: 100%; max-width: 600px; margin-top: 15px; background: #30363d; border-radius: 8px; overflow: hidden; box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);">
+        <div id="attack-progress-bar" style="width: 0%; height: 6px; background: var(--accent-red); transition: width 0.1s linear; box-shadow: 0 0 10px var(--accent-red);"></div>
+    </div>
 </div>
 
 <script>
@@ -56,7 +59,8 @@
     const chart = new Chart(ctx, {
         type: 'line',
         data: { labels: [], datasets: [
-            { label: 'CPU Usage (%)', borderColor: '#58a6ff', backgroundColor: 'rgba(88, 166, 255, 0.1)', borderWidth: 2, fill: true, tension: 0.4, data: [], pointRadius: 0 },
+            { label: 'Actual CPU (%)', borderColor: '#58a6ff', backgroundColor: 'rgba(88, 166, 255, 0.1)', borderWidth: 2, fill: true, tension: 0.4, data: [], pointRadius: 0 },
+            { label: 'AI Forecast (%)', borderColor: '#a371f7', borderDash: [3, 3], borderWidth: 2, tension: 0.4, data: [], pointRadius: 0 },
             { label: 'Shedding Limit', borderColor: '#f85149', borderWidth: 2, borderDash: [5, 5], data: [], pointRadius: 0 }
         ]},
         options: {
@@ -71,29 +75,38 @@
     });
 
     async function updateData() {
-        try {
-            const res = await fetch('/api/stats');
-            const data = await res.json();
-            const time = new Date().toLocaleTimeString([], { hour12: false });
+            const response = await fetch('/api/stats');
+            const data = await response.json();
 
-            document.getElementById('cpu-val').innerText = data.cpu.toFixed(2) + "%";
+            // Update Cards
+            document.getElementById('cpu-val').innerText = data.cpu.toFixed(2) + '%';
             document.getElementById('limit-val').innerText = data.limit;
 
-            chart.data.labels.push(time);
-            chart.data.datasets[0].data.push(data.cpu);
-            chart.data.datasets[1].data.push(data.limit);
+            const time = new Date().toLocaleTimeString();
 
-            // HOSPITAL MONITOR EFFECT:
-            // We keep all data, but shift the "view" to the last 30 points
-            if (chart.data.labels.length > MAX_POINTS) {
-                chart.options.scales.x.min = chart.data.labels.length - MAX_POINTS;
-                chart.options.scales.x.max = chart.data.labels.length - 1;
+            // CRITICAL: Ensure indices [0, 1, 2] match your dataset labels!
+            chart.data.labels.push(time);
+
+            // 0 = Actual CPU (Blue)
+            chart.data.datasets[0].data.push(data.cpu);
+
+            // 1 = AI Forecast (Purple)
+            chart.data.datasets[1].data.push(data.prediction);
+
+            // 2 = Shedding Limit (Red)
+            chart.data.datasets[2].data.push(data.limit);
+
+            // Keep only 30 points on screen
+            if (chart.data.labels.length > 30) {
+                chart.data.labels.shift();
+                chart.data.datasets[0].data.shift();
+                chart.data.datasets[1].data.shift();
+                chart.data.datasets[2].data.shift();
             }
 
-            chart.update('none'); // Update without full re-render for smoothness
-        } catch (e) { console.error(e); }
-    }
-    setInterval(updateData, 2000);
+            chart.update('none'); // Update without flickering
+        }
+    setInterval(updateData, 1000);
 
     let currentMode = "REACTIVE";
 
@@ -119,15 +132,44 @@
         }
     }
 
-    async function triggerStress() {
-    const btn = event.target;
-    btn.innerText = "ATTACKING...";
-    btn.style.opacity = "0.5";
-    await fetch('/api/stress-test');
-    setTimeout(() => {
-        btn.innerText = "LAUNCH_STRESS_TEST";
-        btn.style.opacity = "1";
-    }, 5000);
+async function triggerStress() {
+        const btn = document.getElementById('stress-btn');
+        const progressContainer = document.getElementById('attack-progress-container');
+        const progressBar = document.getElementById('attack-progress-bar');
+
+        // Lock the button
+        btn.innerText = "ATTACKING...";
+        btn.style.opacity = "0.5";
+        btn.disabled = true; // Prevent double-clicks
+
+        // Show and reset the progress bar
+        progressContainer.style.display = "block";
+        progressBar.style.width = "0%";
+
+        // Fire the attack sequence
+        fetch('/api/stress-test');
+
+        // Animate the bar over 10 seconds (100 steps of 100ms)
+        let progress = 0;
+        const interval = setInterval(() => {
+            progress += 1;
+            progressBar.style.width = progress + "%";
+
+            if (progress >= 100) {
+                clearInterval(interval);
+
+                // Unlock the button
+                btn.innerText = "LAUNCH_STRESS_TEST";
+                btn.style.opacity = "1";
+                btn.disabled = false;
+
+                // Hide the bar smoothly after it finishes
+                setTimeout(() => {
+                    progressContainer.style.display = "none";
+                    progressBar.style.width = "0%";
+                }, 1000);
+            }
+        }, 600); // 600ms * 100 = 60,000ms (10 seconds)
     }
 
 </script>

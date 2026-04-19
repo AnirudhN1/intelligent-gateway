@@ -25,10 +25,18 @@ public class GatewayConfig {
                 .route("stress_test_route", r -> r.path("/stress/**")
                         .filters(f -> f.filter((exchange, chain) -> {
                             long start = System.currentTimeMillis();
-                            while (System.currentTimeMillis() - start < 200) { Math.sqrt(Math.random()); }
-                            return chain.filter(exchange);
+                            double mathAccumulator = 0.0;
+                            while (System.currentTimeMillis() - start < 500) {
+                                mathAccumulator += Math.sqrt(java.util.concurrent.ThreadLocalRandom.current().nextDouble());
+                            }
+                            exchange.getAttributes().put("useless_math_result", mathAccumulator);
+
+                            // THE SHORT-CIRCUIT: Return 200 OK right here.
+                            // Do not call chain.filter(exchange).
+                            exchange.getResponse().setStatusCode(org.springframework.http.HttpStatus.OK);
+                            return exchange.getResponse().setComplete();
                         }))
-                        .uri("https://httpbin.org/get"))
+                        .uri("no://op")) // Spring requires a URI, but we ignore it by short-circuiting!
                 .build();
     }
 }
